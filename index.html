@@ -3115,56 +3115,108 @@ function renderSRRoutePaths(outlets) {
   });
 }
 
-/* ═══════════════ MODULE 1: WHITE-SPACE EXPANSION OPPORTUNITY HUBS ═══════════════ */
-const NATIONWIDE_WHITE_SPACES = [
-  { name: 'Rajbari-Faridpur Expressway Corridor', div: 'Dhaka', didx: 0, lat: 23.65, lng: 89.75, pop: '3,800 Unserved Potential Outlets', opp: 'New Transportation Corridor • Severe Supply Gap', estVal: '৳14.8M/mo Potential' },
-  { name: 'Cumilla-Brahmanbaria Industrial Belt', div: 'Chattogram', didx: 1, lat: 23.58, lng: 91.15, pop: '4,200 Unserved Potential Outlets', opp: 'Dense Rural Footfall • 0 Direct Brand Monopoly', estVal: '৳18.5M/mo Potential' },
-  { name: 'Bogura-Naogaon Agro-Highway Trade Hub', div: 'Rajshahi', didx: 2, lat: 24.80, lng: 89.15, pop: '3,100 Unserved Potential Outlets', opp: 'Rapid FMCG Consumption Growth • Beat Deficit', estVal: '৳12.6M/mo Potential' },
-  { name: 'Jashore-Narail Agro-Processing Corridor', div: 'Khulna', didx: 3, lat: 23.16, lng: 89.35, pop: '2,900 Unserved Potential Outlets', opp: 'Wholesale Market Intersection • High Volume', estVal: '৳13.5M/mo Potential' },
-  { name: 'Bhola Island Coastal Commercial Corridor', div: 'Barishal', didx: 4, lat: 22.68, lng: 90.65, pop: '1,900 Unserved Potential Outlets', opp: 'Isolated High-Margin Market • Low SR Frequency', estVal: '৳8.2M/mo Potential' },
-  { name: 'Habiganj-Moulvibazar Tea & Agro Belt', div: 'Sylhet', didx: 5, lat: 24.38, lng: 91.52, pop: '2,600 Unserved Potential Outlets', opp: 'High Local Brand Loyalty • Weak Route Beat', estVal: '৳11.9M/mo Potential' },
-  { name: 'Kurigram-Lalmonirhat Northern Border Belt', div: 'Rangpur', didx: 6, lat: 25.82, lng: 89.55, pop: '3,400 Unserved Potential Outlets', opp: 'High Footfall Rural Market • Expansion Priority', estVal: '৳15.2M/mo Potential' },
-  { name: 'Netrokona-Sherpur Haor Fringe Wholesale Hub', div: 'Mymensingh', didx: 7, lat: 24.88, lng: 90.73, pop: '2,200 Unserved Potential Outlets', opp: 'Seasonal Cash Flow Hub • Beat Blind Spot', estVal: '৳9.4M/mo Potential' }
-];
+/* ═══════════════ MODULE 1: PURE GEOSPATIAL WHITE-SPACE ENGINE (ZERO RETAIL FOOTPRINT) ═══════════════ */
+let thanaOutletCountCache = null;
+
+function buildThanaOutletCountMap() {
+  if (thanaOutletCountCache) return thanaOutletCountCache;
+  const map = {};
+  if (typeof CEO_OUTLETS !== 'undefined') {
+    for (let i = 0; i < 8; i++) {
+      const arr = CEO_OUTLETS[i] || [];
+      arr.forEach(o => {
+        const dist = (o[5] || '').toLowerCase().replace(/[\s\-_]/g, '');
+        const thana = (o[16] || '').toLowerCase().replace(/[\s\-_]/g, '');
+        if (dist && thana) {
+          const key = `${dist}:${thana}`;
+          map[key] = (map[key] || 0) + 1;
+        }
+      });
+    }
+  }
+  thanaOutletCountCache = map;
+  return map;
+}
+
+function getThanaOutletCount(distName, thanaName) {
+  const map = buildThanaOutletCountMap();
+  const dKey = (distName || '').toLowerCase().replace(/[\s\-_]/g, '');
+  const tKey = (thanaName || '').toLowerCase().replace(/[\s\-_]/g, '');
+  return map[`${dKey}:${tKey}`] || 0;
+}
 
 function createWSIcon() {
   return L.divIcon({
     className: '',
     html: `<div class="whitespace-marker">🎯</div>`,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16]
+    iconSize: [30, 30],
+    iconAnchor: [15, 15]
   });
 }
 
 function renderNationwideWhiteSpaceHubs() {
   wsLayer.clearLayers();
-  NATIONWIDE_WHITE_SPACES.forEach(h => {
-    const wsMk = L.marker([h.lat, h.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-    wsMk.bindTooltip(`
-      <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 NATIONWIDE EXPANSION OPPORTUNITY</div>
-        <div class="ws-title">${h.name}</div>
-        <div class="ws-stat">• Division: <b style="color:var(--blue);">${h.div}</b></div>
-        <div class="ws-stat">• Potential Revenue: <b style="color:var(--green);">${h.estVal}</b></div>
-        <div class="ws-stat">• Retail Store Density: <b>${h.pop}</b></div>
-        <div class="ws-opp">⚡ Opportunity: ${h.opp}</div>
-        <div style="font-size:10px;color:var(--blue);margin-top:4px;font-weight:700;">👉 Click to explore ${h.div} Division</div>
-      </div>`, {sticky: false, direction:'top', offset:[0,-14]});
-    
-    wsMk.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      drillDivision(h.didx, h.div);
+  if (typeof BD_THANAS_GEO === 'undefined' || !BD_THANAS_GEO.features) return;
+
+  const zeroPresenceThanas = BD_THANAS_GEO.features.filter(f => {
+    const dName = f.properties.district;
+    const tName = f.properties.thana;
+    return getThanaOutletCount(dName, tName) === 0;
+  });
+
+  zeroPresenceThanas.forEach(feat => {
+    const tName = feat.properties.thana;
+    const dName = feat.properties.district;
+    const divName = feat.properties.division;
+    const didx = DIV_NAMES.indexOf(divName) >= 0 ? DIV_NAMES.indexOf(divName) : 0;
+
+    const poly = L.geoJSON(feat, {
+      interactive: true,
+      style: () => ({
+        fillColor: '#ec4899',
+        fillOpacity: isDark ? 0.24 : 0.16,
+        color: '#ff2a85',
+        weight: 2.2,
+        dashArray: '5, 5'
+      })
     });
 
-    const pulseCircle = L.circle([h.lat, h.lng], {
-      radius: 12000,
+    const center = poly.getBounds().getCenter();
+    const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+
+    const tipContent = `
+      <div class="ws-tooltip-wrap">
+        <div class="ws-badge">🎯 WHITE SPACE TERRITORY (0 OUTLETS)</div>
+        <div class="ws-title">${tName} Thana</div>
+        <div class="ws-stat">• District: <b style="color:var(--blue);">${dName}</b> (${divName})</div>
+        <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Retail Presence)</b></div>
+        <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits (Zero Footprint)</b></div>
+        <div class="ws-opp">⚡ Unserved White Space: High-Priority Territory for New Retailer & Distributor Network</div>
+        <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate & explore ${tName} Thana</div>
+      </div>
+    `;
+
+    wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -14]});
+    poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+    const clickAction = (e) => {
+      L.DomEvent.stopPropagation(e);
+      drillToSpecificThana(tName, dName, didx);
+    };
+
+    wsMk.on('click', clickAction);
+    poly.on('click', clickAction);
+
+    const pulseCircle = L.circle(center, {
+      radius: 4000,
       color: '#ff2a85',
       fillColor: '#ff2a85',
-      fillOpacity: 0.18,
-      weight: 2,
-      dashArray: '6, 6'
+      fillOpacity: 0.12,
+      weight: 1.5,
+      dashArray: '4, 4'
     });
 
+    wsLayer.addLayer(poly);
     wsLayer.addLayer(pulseCircle);
     wsLayer.addLayer(wsMk);
   });
@@ -3173,76 +3225,121 @@ function renderNationwideWhiteSpaceHubs() {
 function renderMultiDivisionWhiteSpaceHubs() {
   wsLayer.clearLayers();
   if (!selectedDivisions || selectedDivisions.length === 0) return;
-  const hubs = NATIONWIDE_WHITE_SPACES.filter(h => selectedDivisions.includes(h.div));
-  hubs.forEach(h => {
-    const wsMk = L.marker([h.lat, h.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-    wsMk.bindTooltip(`
+  if (typeof BD_THANAS_GEO === 'undefined' || !BD_THANAS_GEO.features) return;
+
+  const targetThanas = BD_THANAS_GEO.features.filter(f => 
+    selectedDivisions.includes(f.properties.division) &&
+    getThanaOutletCount(f.properties.district, f.properties.thana) === 0
+  );
+
+  targetThanas.forEach(feat => {
+    const tName = feat.properties.thana;
+    const dName = feat.properties.district;
+    const divName = feat.properties.division;
+    const didx = DIV_NAMES.indexOf(divName) >= 0 ? DIV_NAMES.indexOf(divName) : 0;
+
+    const poly = L.geoJSON(feat, {
+      interactive: true,
+      style: () => ({
+        fillColor: '#ec4899',
+        fillOpacity: isDark ? 0.25 : 0.18,
+        color: '#ff2a85',
+        weight: 2.2,
+        dashArray: '5, 5'
+      })
+    });
+
+    const center = poly.getBounds().getCenter();
+    const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+
+    const tipContent = `
       <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 EXPANSION OPPORTUNITY</div>
-        <div class="ws-title">${h.name}</div>
-        <div class="ws-stat">• Division: <b style="color:var(--blue);">${h.div}</b></div>
-        <div class="ws-stat">• Potential Value: <b style="color:var(--green);">${h.estVal}</b></div>
-        <div class="ws-stat">• Store Density: <b>${h.pop}</b></div>
-        <div class="ws-opp">⚡ ${h.opp}</div>
-      </div>`, {sticky: false, direction:'top', offset:[0,-14]});
-    
-    wsMk.on('click', (e) => {
+        <div class="ws-badge">🎯 WHITE SPACE TERRITORY (0 OUTLETS)</div>
+        <div class="ws-title">${tName} Thana (${dName})</div>
+        <div class="ws-stat">• Division: <b style="color:var(--blue);">${divName}</b></div>
+        <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Company Footprint)</b></div>
+        <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
+        <div class="ws-opp">⚡ Expansion Opportunity: Zero dealer/outlet competition for Bir Group</div>
+        <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
+      </div>
+    `;
+
+    wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -14]});
+    poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+    const clickAction = (e) => {
       L.DomEvent.stopPropagation(e);
-      drillDivision(h.didx, h.div);
-    });
+      drillToSpecificThana(tName, dName, didx);
+    };
 
-    const pulseCircle = L.circle([h.lat, h.lng], {
-      radius: 10000,
-      color: '#ff2a85',
-      fillColor: '#ff2a85',
-      fillOpacity: 0.18,
-      weight: 2,
-      dashArray: '6, 6'
-    });
+    wsMk.on('click', clickAction);
+    poly.on('click', clickAction);
 
-    wsLayer.addLayer(pulseCircle);
+    wsLayer.addLayer(poly);
     wsLayer.addLayer(wsMk);
   });
 }
 
 function renderDivisionWhiteSpaceHubs(divName, divIdx) {
   wsLayer.clearLayers();
-  if (typeof BD_DISTRICTS_GEO === 'undefined' || !BD_DISTRICTS_GEO.features) return;
-  const distFeatures = BD_DISTRICTS_GEO.features.filter(f => f.properties.division === divName);
-  
-  distFeatures.forEach((feat, idx) => {
-    const dName = feat.properties.district;
-    const poly = L.geoJSON(feat);
-    const center = poly.getBounds().getCenter();
-    const offsetLat = center.lat + (idx % 2 === 0 ? 0.035 : -0.035);
-    const offsetLng = center.lng + (idx % 3 === 0 ? 0.045 : -0.045);
+  if (typeof BD_THANAS_GEO === 'undefined' || !BD_THANAS_GEO.features) return;
 
-    const wsMk = L.marker([offsetLat, offsetLng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-    wsMk.bindTooltip(`
-      <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 DIVISIONAL EXPANSION HUB</div>
-        <div class="ws-title">${dName} Commercial Growth Corridor</div>
-        <div class="ws-stat">• District: <b style="color:var(--blue);">${dName}</b></div>
-        <div class="ws-stat">• Revenue Potential: <b style="color:var(--green);">৳${(3.5 + (idx*0.8)).toFixed(1)}M/mo</b></div>
-        <div class="ws-stat">• Target Stores: <b>${850 + (idx*120)} Unserved Shops</b></div>
-        <div class="ws-opp">⚡ High Footfall Bypass Market • Priority Beat Extension</div>
-        <div style="font-size:10px;color:var(--blue);margin-top:4px;font-weight:700;">👉 Click to isolate ${dName} District</div>
-      </div>`, {sticky: false, direction:'top', offset:[0,-14]});
-    
-    wsMk.on('click', (e) => {
-      L.DomEvent.stopPropagation(e);
-      drillDistrict(dName, divIdx, feat);
+  const divThanas = BD_THANAS_GEO.features.filter(f => 
+    (f.properties.division || '').toLowerCase() === (divName || '').toLowerCase() &&
+    getThanaOutletCount(f.properties.district, f.properties.thana) === 0
+  );
+
+  divThanas.forEach(feat => {
+    const tName = feat.properties.thana;
+    const dName = feat.properties.district;
+
+    const poly = L.geoJSON(feat, {
+      interactive: true,
+      style: () => ({
+        fillColor: '#ec4899',
+        fillOpacity: isDark ? 0.28 : 0.20,
+        color: '#ff2a85',
+        weight: 2.5,
+        dashArray: '5, 5'
+      })
     });
 
-    const pulseCircle = L.circle([offsetLat, offsetLng], {
-      radius: 4500,
+    const center = poly.getBounds().getCenter();
+    const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+
+    const tipContent = `
+      <div class="ws-tooltip-wrap">
+        <div class="ws-badge">🎯 DIVISIONAL WHITE SPACE THANA</div>
+        <div class="ws-title">${tName} Thana</div>
+        <div class="ws-stat">• District: <b style="color:var(--blue);">${dName}</b> (${divName} Division)</div>
+        <div class="ws-stat">• Registered Outlets: <b style="color:#ef4444;">0 Outlets (Zero Retail Presence)</b></div>
+        <div class="ws-stat">• Visits: <b style="color:#ef4444;">0 Visits</b></div>
+        <div class="ws-opp">⚡ Pure White Space: Complete territorial gap awaiting retailer onboarding</div>
+        <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
+      </div>
+    `;
+
+    wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -14]});
+    poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+    const clickAction = (e) => {
+      L.DomEvent.stopPropagation(e);
+      drillToSpecificThana(tName, dName, divIdx);
+    };
+
+    wsMk.on('click', clickAction);
+    poly.on('click', clickAction);
+
+    const pulseCircle = L.circle(center, {
+      radius: 3500,
       color: '#ff2a85',
       fillColor: '#ff2a85',
-      fillOpacity: 0.16,
-      weight: 1.8,
-      dashArray: '5, 5'
+      fillOpacity: 0.14,
+      weight: 1.5,
+      dashArray: '4, 4'
     });
 
+    wsLayer.addLayer(poly);
     wsLayer.addLayer(pulseCircle);
     wsLayer.addLayer(wsMk);
   });
@@ -3250,47 +3347,55 @@ function renderDivisionWhiteSpaceHubs(divName, divIdx) {
 
 function renderDistrictWhiteSpaceHubs(distName, divIdx) {
   wsLayer.clearLayers();
-  const allOutlets = (typeof CEO_OUTLETS !== 'undefined' ? CEO_OUTLETS[divIdx] : null) || [];
-  const outlets = allOutlets.filter(o => o[5] && o[5].toLowerCase() === distName.toLowerCase());
+  if (typeof BD_THANAS_GEO === 'undefined' || !BD_THANAS_GEO.features) return;
 
-  let minLat=23.0, maxLat=24.0, minLng=89.0, maxLng=90.0;
-  if (outlets.length > 0) {
-    const lats = outlets.map(o => o[0]);
-    const lngs = outlets.map(o => o[1]);
-    minLat = Math.min(...lats); maxLat = Math.max(...lats);
-    minLng = Math.min(...lngs); maxLng = Math.max(...lngs);
-  } else if (typeof BD_DISTRICTS_GEO !== 'undefined' && BD_DISTRICTS_GEO.features) {
-    const feat = BD_DISTRICTS_GEO.features.find(f => f.properties.district && f.properties.district.toLowerCase() === distName.toLowerCase());
-    if (feat) {
-      const b = L.geoJSON(feat).getBounds();
-      minLat = b.getSouth(); maxLat = b.getNorth();
-      minLng = b.getWest(); maxLng = b.getEast();
-    }
-  }
+  const distThanas = BD_THANAS_GEO.features.filter(f => 
+    (f.properties.district || '').toLowerCase() === (distName || '').toLowerCase() &&
+    getThanaOutletCount(distName, f.properties.thana) === 0
+  );
 
-  const dLat = (maxLat - minLat) || 0.2;
-  const dLng = (maxLng - minLng) || 0.2;
+  distThanas.forEach(feat => {
+    const tName = feat.properties.thana;
 
-  const hubs = [
-    { name: `${distName} East Commercial Zone`, lat: minLat + dLat*0.75, lng: minLng + dLng*0.80, pop: '35K Est. Retail Density', opp: 'High Demand • 0 Competitor Dominance', estVal: '৳4.2M/mo Potential' },
-    { name: `${distName} North Bypass Market`, lat: minLat + dLat*0.85, lng: minLng + dLng*0.25, pop: '22K Est. Retail Density', opp: 'New Wholesale Hub • Underserved', estVal: '৳2.8M/mo Potential' },
-    { name: `${distName} South Industrial Belt`, lat: minLat + dLat*0.20, lng: minLng + dLng*0.70, pop: '40K Est. Retail Density', opp: 'Rapid FMCG Consumption Growth', estVal: '৳5.5M/mo Potential' },
-    { name: `${distName} Central Extension Hub`, lat: minLat + dLat*0.48, lng: minLng + dLng*0.35, pop: '18K Est. Retail Density', opp: 'High Footfall • Route Blind Spot', estVal: '৳3.1M/mo Potential' }
-  ];
+    const poly = L.geoJSON(feat, {
+      interactive: true,
+      style: () => ({
+        fillColor: '#ec4899',
+        fillOpacity: isDark ? 0.30 : 0.22,
+        color: '#ff2a85',
+        weight: 2.8,
+        dashArray: '5, 5'
+      })
+    });
 
-  hubs.forEach(h => {
-    const wsMk = L.marker([h.lat, h.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-    wsMk.bindTooltip(`
+    const center = poly.getBounds().getCenter();
+    const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+
+    const tipContent = `
       <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 DISTRICT WHITE-SPACE HUB</div>
-        <div class="ws-title">${h.name}</div>
-        <div class="ws-stat">• Potential Revenue: <b style="color:var(--green);">${h.estVal}</b></div>
-        <div class="ws-stat">• Market Density: <b>${h.pop}</b></div>
-        <div class="ws-opp">⚡ ${h.opp}</div>
-      </div>`, {sticky: false, direction:'top', offset:[0,-12]});
-    
-    const pulseCircle = L.circle([h.lat, h.lng], {
-      radius: 1200,
+        <div class="ws-badge">🎯 DISTRICT WHITE SPACE THANA</div>
+        <div class="ws-title">${tName} Thana</div>
+        <div class="ws-stat">• District: <b style="color:var(--blue);">${distName}</b></div>
+        <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Brand Presence)</b></div>
+        <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
+        <div class="ws-opp">⚡ Unpenetrated Territory: Potential to appoint fresh distributor/SR beat</div>
+        <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
+      </div>
+    `;
+
+    wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -12]});
+    poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+    const clickAction = (e) => {
+      L.DomEvent.stopPropagation(e);
+      drillToSpecificThana(tName, distName, divIdx);
+    };
+
+    wsMk.on('click', clickAction);
+    poly.on('click', clickAction);
+
+    const pulseCircle = L.circle(center, {
+      radius: 2500,
       color: '#ff2a85',
       fillColor: '#ff2a85',
       fillOpacity: 0.16,
@@ -3298,6 +3403,7 @@ function renderDistrictWhiteSpaceHubs(distName, divIdx) {
       dashArray: '4, 4'
     });
 
+    wsLayer.addLayer(poly);
     wsLayer.addLayer(pulseCircle);
     wsLayer.addLayer(wsMk);
   });
@@ -3305,55 +3411,120 @@ function renderDistrictWhiteSpaceHubs(distName, divIdx) {
 
 function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
   wsLayer.clearLayers();
-  const tOutlets = (outlets || []).filter(o => o[16] && o[16].toLowerCase() === thanaName.toLowerCase());
   
-  let minLat=23.0, maxLat=24.0, minLng=89.0, maxLng=90.0;
-  if (tOutlets.length > 0) {
-    const lats = tOutlets.map(o => o[0]);
-    const lngs = tOutlets.map(o => o[1]);
-    minLat = Math.min(...lats); maxLat = Math.max(...lats);
-    minLng = Math.min(...lngs); maxLng = Math.max(...lngs);
-  } else if (typeof BD_THANAS_GEO !== 'undefined' && BD_THANAS_GEO.features) {
-    const feat = BD_THANAS_GEO.features.find(f => f.properties.thana && f.properties.thana.toLowerCase() === thanaName.toLowerCase());
-    if (feat) {
-      const b = L.geoJSON(feat).getBounds();
-      minLat = b.getSouth(); maxLat = b.getNorth();
-      minLng = b.getWest(); maxLng = b.getEast();
-    }
+  // 1. Check Authentic Unions for 0 Outlets
+  const uFeatures = getThanaUnionFeatures(distName, thanaName);
+  const tOutlets = (outlets || []).filter(o => o[16] && (o[16].toLowerCase() === thanaName.toLowerCase() || o[16].toLowerCase().replace(/[\s\-_]/g,'') === thanaName.toLowerCase().replace(/[\s\-_]/g,'')));
+
+  if (uFeatures && uFeatures.length > 0) {
+    uFeatures.forEach(uFeat => {
+      const uName = uFeat.properties.union;
+      const count = tOutlets.filter(o => isPointInGeoFeature(o[0], o[1], uFeat)).length;
+      
+      // If this union has 0 outlets -> It is an Authentic Union White Space!
+      if (count === 0) {
+        const poly = L.geoJSON(uFeat, {
+          interactive: true,
+          style: () => ({
+            fillColor: '#ec4899',
+            fillOpacity: isDark ? 0.32 : 0.24,
+            color: '#ff2a85',
+            weight: 3.0,
+            dashArray: '6, 6'
+          })
+        });
+
+        const center = poly.getBounds().getCenter();
+        const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+
+        const tipContent = `
+          <div class="ws-tooltip-wrap">
+            <div class="ws-badge">🎯 UNION WHITE SPACE (0 OUTLETS)</div>
+            <div class="ws-title">${uName}</div>
+            <div class="ws-stat">• Thana: <b>${thanaName}</b> (${distName})</div>
+            <div class="ws-stat">• Outlets: <b style="color:#ef4444;">0 Outlets (Zero Retail Presence)</b></div>
+            <div class="ws-opp">⚡ Local Union Gap: Complete unserved union within ${thanaName}</div>
+            <div style="font-size:10px;color:var(--blue);margin-top:4px;font-weight:700;">👉 Click to isolate ${uName}</div>
+          </div>
+        `;
+
+        wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -10]});
+        poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+        const clickAction = (e) => {
+          L.DomEvent.stopPropagation(e);
+          drillUnion(uName, thanaName, distName, divIdx);
+        };
+        wsMk.on('click', clickAction);
+        poly.on('click', clickAction);
+
+        wsLayer.addLayer(poly);
+        wsLayer.addLayer(wsMk);
+      }
+    });
   }
 
-  const dLat = (maxLat - minLat) || 0.06;
-  const dLng = (maxLng - minLng) || 0.06;
-
-  const microHubs = [
-    { name: `${thanaName} Central Bazaar Expansion Node`, lat: minLat + dLat*0.50, lng: minLng + dLng*0.50, pop: '220 Unreached Stores', estVal: '৳950K/mo', opp: 'Core Market Infill • High Daily Footfall' },
-    { name: `${thanaName} Highway Junction Point`, lat: minLat + dLat*0.75, lng: minLng + dLng*0.72, pop: '140 Unreached Stores', estVal: '৳680K/mo', opp: 'Inter-district Transit Hub • Fast Turnaround' },
-    { name: `${thanaName} Riverine / Rural Growth Hat`, lat: minLat + dLat*0.25, lng: minLng + dLng*0.30, pop: '180 Unreached Stores', estVal: '৳780K/mo', opp: 'Weekly Haat Gathering • Bulk Cash Sales' }
-  ];
-
-  microHubs.forEach(h => {
-    const wsMk = L.marker([h.lat, h.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-    wsMk.bindTooltip(`
-      <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 THANA MICRO-EXPANSION HUB</div>
-        <div class="ws-title">${h.name}</div>
-        <div class="ws-stat">• Potential Value: <b style="color:var(--green);">${h.estVal}</b></div>
-        <div class="ws-stat">• Unserved Outlets: <b>${h.pop}</b></div>
-        <div class="ws-opp">⚡ ${h.opp}</div>
-      </div>`, {sticky: false, direction:'top', offset:[0,-10]});
-
-    const pulseCircle = L.circle([h.lat, h.lng], {
-      radius: 400,
-      color: '#ff2a85',
-      fillColor: '#ff2a85',
-      fillOpacity: 0.18,
-      weight: 1.5,
-      dashArray: '3, 3'
+  // 2. Spatial Coverage Voids (Areas Far From Existing Outlet Clusters)
+  let thanaBounds = null;
+  if (typeof BD_THANAS_GEO !== 'undefined' && BD_THANAS_GEO.features) {
+    const feat = BD_THANAS_GEO.features.find(f => {
+      const ft = (f.properties.thana || '').toLowerCase().replace(/[\s\-_]/g,'');
+      const fd = (f.properties.district || '').toLowerCase().replace(/[\s\-_]/g,'');
+      return (ft === thanaName.toLowerCase().replace(/[\s\-_]/g,'')) && (!distName || fd === distName.toLowerCase().replace(/[\s\-_]/g,''));
     });
+    if (feat) thanaBounds = L.geoJSON(feat).getBounds();
+  }
 
-    wsLayer.addLayer(pulseCircle);
-    wsLayer.addLayer(wsMk);
-  });
+  if (thanaBounds && thanaBounds.isValid()) {
+    const minLat = thanaBounds.getSouth(), maxLat = thanaBounds.getNorth();
+    const minLng = thanaBounds.getWest(), maxLng = thanaBounds.getEast();
+    const dLat = maxLat - minLat;
+    const dLng = maxLng - minLng;
+
+    // Check grid sectors for coverage void
+    const samplePoints = [
+      { name: `${thanaName} North Sector`, lat: minLat + dLat*0.82, lng: minLng + dLng*0.35 },
+      { name: `${thanaName} South-East Sector`, lat: minLat + dLat*0.22, lng: minLng + dLng*0.78 },
+      { name: `${thanaName} West Flank`, lat: minLat + dLat*0.55, lng: minLng + dLng*0.18 }
+    ];
+
+    samplePoints.forEach(sp => {
+      // Find distance to closest outlet
+      let minDistKm = 999;
+      tOutlets.forEach(o => {
+        const dLatDeg = o[0] - sp.lat;
+        const dLngDeg = o[1] - sp.lng;
+        const distKm = Math.sqrt(dLatDeg*dLatDeg + dLngDeg*dLngDeg) * 111;
+        if (distKm < minDistKm) minDistKm = distKm;
+      });
+
+      // If no outlet within 1.2 km -> Spatial Void!
+      if (minDistKm > 1.2) {
+        const voidCircle = L.circle([sp.lat, sp.lng], {
+          radius: 800,
+          color: '#ff2a85',
+          fillColor: '#ff2a85',
+          fillOpacity: 0.16,
+          weight: 2,
+          dashArray: '4, 4'
+        });
+
+        const voidMk = L.marker([sp.lat, sp.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+        voidMk.bindTooltip(`
+          <div class="ws-tooltip-wrap">
+            <div class="ws-badge">🎯 LOCAL COVERAGE VOID (NO OUTLETS)</div>
+            <div class="ws-title">${sp.name}</div>
+            <div class="ws-stat">• Nearest Outlet: <b style="color:#ef4444;">${minDistKm.toFixed(1)} km away</b></div>
+            <div class="ws-stat">• Status: <b style="color:#ef4444;">Unserved Village / Road Sector</b></div>
+            <div class="ws-opp">⚡ Route Expansion: Opportunity to extend SR beat into this sector</div>
+          </div>
+        `, {sticky: false, direction: 'top', offset: [0, -10]});
+
+        wsLayer.addLayer(voidCircle);
+        wsLayer.addLayer(voidMk);
+      }
+    });
+  }
 }
 
 /* ═══════════════ MODULE 1: NATIONWIDE 3D VISIT HEIGHT PILLARS ═══════════════ */
