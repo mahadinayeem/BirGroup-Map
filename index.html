@@ -989,7 +989,6 @@ aside::-webkit-scrollbar-thumb{background:var(--bdr2);border-radius:2px;}
     <div class="kpi"><span class="kl">Active Field SRs</span><span class="kv purp" id="kSRs">—</span></div>
   </div>
   <div class="hdr-r">
-    <button class="btn btn-dl" onclick="downloadFilteredCSV()">📥 Export Outlets (CSV)</button>
     <button class="btn" id="exportViewBtn" style="background:#3b82f6;color:white;border:none;margin-right:6px;" onclick="exportView()">📷 Export Map Image</button>
     <button class="btn" id="themeBtn" onclick="toggleTheme()">☀️ Light Mode</button>
   </div>
@@ -4118,86 +4117,7 @@ function buildSubTierControls(f) {
     }
   }
 
-/* ═══════════════ EXPORT FILTERED CSV ═══════════════ */
-function downloadFilteredCSV() {
-  let exportData = [];
-  let targetDivs = activeDivision ? [DIV_NAMES.indexOf(activeDivision)] : [0,1,2,3,4,5,6,7];
 
-  targetDivs.forEach(didx => {
-    const arr = (typeof CEO_OUTLETS !== 'undefined' ? CEO_OUTLETS[didx] : null) || [];
-    arr.forEach(o => {
-      const [lat,lng,id,name,d_idx,dist,score,status,rev,visits,lastVisit,daysSince,srName,orders,avgRPV,trend,thana] = o;
-      if (activeDistrict && dist.toLowerCase() !== activeDistrict.toLowerCase()) return;
-      if (activeThana && (!thana || thana.toLowerCase() !== activeThana.toLowerCase())) return;
-      if (activeUnion) {
-        const uFeat = findUnionFeature(activeUnion, activeThana, dist);
-        if (uFeat) {
-          if (!isPointInGeoFeature(lat, lng, uFeat)) return;
-        } else {
-          const uNorm = normUnionKey(activeUnion);
-          const oUnion = normUnionKey(o[17]);
-          if (oUnion !== uNorm && !oUnion.includes(uNorm) && !uNorm.includes(oUnion)) return;
-        }
-      }
-      if (!isOutletMatch(o)) return;
-
-      const st = classifySubTier(status, score, rev, visits, orders, daysSince, avgRPV);
-      let gapType = 'Active Performer';
-      if ((visits||0) === 0) gapType = '0-Visit Blind Spot (No SR Visits in 4M)';
-      else if ((rev||0) === 0) gapType = '0-Revenue Conversion Barrier (Visited But 0 Sales)';
-      else if (status === 'R') gapType = 'At-Risk Weak Buyer';
-
-      exportData.push({
-        'Outlet_ID': id,
-        'Outlet_Name': name,
-        'Division': DIV_NAMES[didx],
-        'District': dist,
-        'Thana_Upazila': thana || 'N/A',
-        'Union_Ward': activeUnion || o[17] || 'N/A',
-        'Primary_Health': status === 'G' ? 'Strong' : status === 'Y' ? 'Moderate' : 'Weak',
-        'Sub_Tier': st.name,
-        'Is_Zero_Visits_4M': (visits||0) === 0 ? 'YES' : 'NO',
-        'Is_Zero_Revenue_4M': (rev||0) === 0 ? 'YES' : 'NO',
-        'Field_Gap_Diagnosis': gapType,
-        'Health_Score': score,
-        'Diagnosis_Why_Reason': st.desc.replace(/,/g, ';'),
-        '4M_Revenue_BDT': rev,
-        'Orders_Count': orders,
-        'Visits_Count': visits,
-        'Last_Visit_Date': lastVisit || 'None',
-        'Days_Since_Last_Visit': daysSince,
-        'Assigned_SR': srName,
-        'Revenue_Per_Visit': avgRPV,
-        'Month_Minus_3_Revenue': trend && trend[0] ? trend[0] : 0,
-        'Month_Minus_2_Revenue': trend && trend[1] ? trend[1] : 0,
-        'Month_Minus_1_Revenue': trend && trend[2] ? trend[2] : 0,
-        'Current_Month_Revenue': trend && trend[3] ? trend[3] : 0,
-        'Latitude': lat,
-        'Longitude': lng
-      });
-    });
-  });
-
-  if (exportData.length === 0) {
-    alert('No outlets match the selected filter!');
-    return;
-  }
-
-  const headers = Object.keys(exportData[0]).join(',');
-  const rows = exportData.map(row => Object.values(row).map(v => `"${v}"`).join(','));
-  const csvContent = [headers, ...rows].join('\n');
-  const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  const filename = `Outlets_${activeDivision||'BD'}_${activeDistrict||'All'}_${activeThana||'All'}_${healthFilter}_${subTierFilter}_${new Date().toISOString().slice(0,10)}.csv`;
-  link.setAttribute('href', url);
-  link.setAttribute('download', filename);
-  link.style.display = 'none';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-}
 
 /* ═══════════════ RESET TO NATIONAL ═══════════════ */
 function resetNational() {
