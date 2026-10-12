@@ -2018,6 +2018,9 @@ function drawDivisionPolygons() {
   if(bounds.isValid()){
     map.fitBounds(bounds, {padding:[20,20], maxZoom:8});
   }
+  if (wsOn) {
+    renderNationwideWhiteSpaceHubs();
+  }
 }
 
 /* ═══════════════ MULTI-DIVISION DRAWING (CTRL + CLICK) ═══════════════ */
@@ -2156,6 +2159,9 @@ function drawDistrictPolygons(divName, divIdx) {
 
   if(bounds.isValid()){
     map.fitBounds(bounds, {padding:[40,40], maxZoom:10});
+  }
+  if (wsOn) {
+    renderDivisionWhiteSpaceHubs(divName, divIdx);
   }
 }
 
@@ -2300,6 +2306,9 @@ function drawThanaPolygons(distName, divIdx) {
 
   if(bounds.isValid()){
     map.fitBounds(bounds, {padding:[40,40], maxZoom:12});
+  }
+  if (wsOn) {
+    renderDistrictWhiteSpaceHubs(distName, divIdx);
   }
 }
 
@@ -3347,66 +3356,191 @@ function renderDivisionWhiteSpaceHubs(divName, divIdx) {
 
 function renderDistrictWhiteSpaceHubs(distName, divIdx) {
   wsLayer.clearLayers();
-  if (typeof BD_THANAS_GEO === 'undefined' || !BD_THANAS_GEO.features) return;
+  if (!distName) return;
 
-  const distThanas = BD_THANAS_GEO.features.filter(f => 
-    (f.properties.district || '').toLowerCase() === (distName || '').toLowerCase() &&
-    getThanaOutletCount(distName, f.properties.thana) === 0
-  );
+  const allOutlets = (typeof CEO_OUTLETS !== 'undefined' ? CEO_OUTLETS[divIdx] : null) || [];
+  const distOutlets = allOutlets.filter(o => o[5] && o[5].toLowerCase() === distName.toLowerCase());
 
-  distThanas.forEach(feat => {
-    const tName = feat.properties.thana;
+  // 1. Thanas in this district with 0 Outlets
+  if (typeof BD_THANAS_GEO !== 'undefined' && BD_THANAS_GEO.features) {
+    const distThanas = BD_THANAS_GEO.features.filter(f => 
+      (f.properties.district || '').toLowerCase() === (distName || '').toLowerCase() &&
+      getThanaOutletCount(distName, f.properties.thana) === 0
+    );
 
-    const poly = L.geoJSON(feat, {
-      interactive: true,
-      style: () => ({
-        fillColor: '#ec4899',
-        fillOpacity: isDark ? 0.30 : 0.22,
+    distThanas.forEach(feat => {
+      const tName = feat.properties.thana;
+      const poly = L.geoJSON(feat, {
+        interactive: true,
+        style: () => ({
+          fillColor: '#ec4899',
+          fillOpacity: isDark ? 0.30 : 0.22,
+          color: '#ff2a85',
+          weight: 2.8,
+          dashArray: '5, 5'
+        })
+      });
+
+      const center = poly.getBounds().getCenter();
+      const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+      const tipContent = `
+        <div class="ws-tooltip-wrap">
+          <div class="ws-badge">🎯 DISTRICT WHITE SPACE THANA</div>
+          <div class="ws-title">${tName} Thana</div>
+          <div class="ws-stat">• District: <b style="color:var(--blue);">${distName}</b></div>
+          <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Brand Presence)</b></div>
+          <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
+          <div class="ws-opp">⚡ Unpenetrated Territory: Potential to appoint fresh distributor/SR beat</div>
+          <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
+        </div>
+      `;
+
+      wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -12]});
+      poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+
+      const clickAction = (e) => {
+        L.DomEvent.stopPropagation(e);
+        drillToSpecificThana(tName, distName, divIdx);
+      };
+      wsMk.on('click', clickAction);
+      poly.on('click', clickAction);
+
+      const pulseCircle = L.circle(center, {
+        radius: 2500,
         color: '#ff2a85',
-        weight: 2.8,
-        dashArray: '5, 5'
-      })
+        fillColor: '#ff2a85',
+        fillOpacity: 0.16,
+        weight: 1.5,
+        dashArray: '4, 4'
+      });
+
+      wsLayer.addLayer(poly);
+      wsLayer.addLayer(pulseCircle);
+      wsLayer.addLayer(wsMk);
     });
+  }
 
-    const center = poly.getBounds().getCenter();
-    const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+  // 2. Unions in this district with 0 Outlets (e.g. Sreepur Mawna, Goshinga, Sreepur Paurashava)
+  if (typeof BD_UNIONS_GEO !== 'undefined' && BD_UNIONS_GEO.features) {
+    const distUnions = BD_UNIONS_GEO.features.filter(f => 
+      (f.properties.district || '').toLowerCase() === (distName || '').toLowerCase()
+    );
 
-    const tipContent = `
-      <div class="ws-tooltip-wrap">
-        <div class="ws-badge">🎯 DISTRICT WHITE SPACE THANA</div>
-        <div class="ws-title">${tName} Thana</div>
-        <div class="ws-stat">• District: <b style="color:var(--blue);">${distName}</b></div>
-        <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Brand Presence)</b></div>
-        <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
-        <div class="ws-opp">⚡ Unpenetrated Territory: Potential to appoint fresh distributor/SR beat</div>
-        <div style="font-size:10px;color:var(--blue);margin-top:5px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
-      </div>
-    `;
+    distUnions.forEach(uFeat => {
+      const uName = uFeat.properties.union;
+      const tName = uFeat.properties.thana;
+      const uOutlets = distOutlets.filter(o => isPointInGeoFeature(o[0], o[1], uFeat));
+      
+      if (uOutlets.length === 0) {
+        const poly = L.geoJSON(uFeat, {
+          interactive: true,
+          style: () => ({
+            fillColor: '#ec4899',
+            fillOpacity: isDark ? 0.35 : 0.25,
+            color: '#ff2a85',
+            weight: 2.8,
+            dashArray: '5, 5'
+          })
+        });
 
-    wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -12]});
-    poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
+        const center = poly.getBounds().getCenter();
+        const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+        const tipContent = `
+          <div class="ws-tooltip-wrap">
+            <div class="ws-badge">🎯 WHITE SPACE UNION (0 OUTLETS)</div>
+            <div class="ws-title">${uName}</div>
+            <div class="ws-stat">• Upazila: <b>${tName}</b> (${distName} District)</div>
+            <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (No Company Footprint)</b></div>
+            <div class="ws-opp">⚡ Unserved Union: Zero retail footprint in this entire union</div>
+            <div style="font-size:10px;color:var(--blue);margin-top:4px;font-weight:700;">👉 Click to isolate ${uName}</div>
+          </div>
+        `;
+        wsMk.bindTooltip(tipContent, {sticky: false, direction: 'top', offset: [0, -10]});
+        poly.bindTooltip(tipContent, {sticky: true, direction: 'top'});
 
-    const clickAction = (e) => {
-      L.DomEvent.stopPropagation(e);
-      drillToSpecificThana(tName, distName, divIdx);
-    };
+        const clickAction = (e) => {
+          L.DomEvent.stopPropagation(e);
+          drillUnion(uName, tName, distName, divIdx);
+        };
+        wsMk.on('click', clickAction);
+        poly.on('click', clickAction);
 
-    wsMk.on('click', clickAction);
-    poly.on('click', clickAction);
-
-    const pulseCircle = L.circle(center, {
-      radius: 2500,
-      color: '#ff2a85',
-      fillColor: '#ff2a85',
-      fillOpacity: 0.16,
-      weight: 1.5,
-      dashArray: '4, 4'
+        wsLayer.addLayer(poly);
+        wsLayer.addLayer(wsMk);
+      }
     });
+  }
 
-    wsLayer.addLayer(poly);
-    wsLayer.addLayer(pulseCircle);
-    wsLayer.addLayer(wsMk);
-  });
+  // 3. Unserved Spatial Coverage Voids in the District (Thanas with low outlet density like Kapasia, Kaliganj)
+  if (typeof BD_THANAS_GEO !== 'undefined' && BD_THANAS_GEO.features) {
+    const distThanaFeatures = BD_THANAS_GEO.features.filter(f => 
+      (f.properties.district || '').toLowerCase() === (distName || '').toLowerCase()
+    );
+
+    distThanaFeatures.forEach(tFeat => {
+      const tName = tFeat.properties.thana;
+      const tOutlets = distOutlets.filter(o => o[16] && (o[16].toLowerCase() === tName.toLowerCase() || o[16].toLowerCase().replace(/[\s\-_]/g,'') === tName.toLowerCase().replace(/[\s\-_]/g,'')));
+      
+      const tPoly = L.geoJSON(tFeat);
+      const b = tPoly.getBounds();
+      if (!b.isValid()) return;
+
+      const minLat = b.getSouth(), maxLat = b.getNorth();
+      const minLng = b.getWest(), maxLng = b.getEast();
+      const dLat = maxLat - minLat;
+      const dLng = maxLng - minLng;
+
+      // Sample sectors in this thana
+      const sectors = [
+        { name: `${tName} North Sector`, lat: minLat + dLat * 0.78, lng: minLng + dLng * 0.45 },
+        { name: `${tName} East Sector`, lat: minLat + dLat * 0.45, lng: minLng + dLng * 0.80 },
+        { name: `${tName} South Sector`, lat: minLat + dLat * 0.22, lng: minLng + dLng * 0.35 }
+      ];
+
+      sectors.forEach(sec => {
+        let minDistKm = 999;
+        tOutlets.forEach(o => {
+          const dLatDeg = o[0] - sec.lat;
+          const dLngDeg = o[1] - sec.lng;
+          const distKm = Math.sqrt(dLatDeg*dLatDeg + dLngDeg*dLngDeg) * 111;
+          if (distKm < minDistKm) minDistKm = distKm;
+        });
+
+        // If distance is > 2.0 km and the point is within the thana polygon
+        if (minDistKm > 2.0 && isPointInGeoFeature(sec.lat, sec.lng, tFeat)) {
+          const pulseCircle = L.circle([sec.lat, sec.lng], {
+            radius: 1400,
+            color: '#ff2a85',
+            fillColor: '#ff2a85',
+            fillOpacity: 0.16,
+            weight: 2,
+            dashArray: '4, 4'
+          });
+
+          const wsMk = L.marker([sec.lat, sec.lng], {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+          wsMk.bindTooltip(`
+            <div class="ws-tooltip-wrap">
+              <div class="ws-badge">🎯 LOCAL WHITE SPACE POCKET</div>
+              <div class="ws-title">${sec.name}</div>
+              <div class="ws-stat">• Upazila: <b>${tName}</b> (${distName} District)</div>
+              <div class="ws-stat">• Nearest Outlet: <b style="color:#ef4444;">${minDistKm.toFixed(1)} km away</b></div>
+              <div class="ws-stat">• Status: <b style="color:#ef4444;">Unserved Village / Road Sector (0 Stores)</b></div>
+              <div class="ws-opp">⚡ Spatial Void: Unpenetrated market pocket awaiting SR beat extension</div>
+              <div style="font-size:10px;color:var(--blue);margin-top:4px;font-weight:700;">👉 Click to isolate ${tName} Thana</div>
+            </div>
+          `, {sticky: false, direction: 'top', offset: [0, -10]});
+
+          wsMk.on('click', (e) => {
+            L.DomEvent.stopPropagation(e);
+            drillToSpecificThana(tName, distName, divIdx);
+          });
+
+          wsLayer.addLayer(pulseCircle);
+          wsLayer.addLayer(wsMk);
+        }
+      });
+    });
+  }
 }
 
 function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
