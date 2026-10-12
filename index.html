@@ -3609,13 +3609,44 @@ function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
     if (feat) thanaBounds = L.geoJSON(feat).getBounds();
   }
 
+  // Case A: Entire Thana has 0 Outlets (100% Complete White Space)
+  if (tOutlets.length === 0) {
+    if (thanaBounds && thanaBounds.isValid()) {
+      const center = thanaBounds.getCenter();
+      const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+      wsMk.bindTooltip(`
+        <div class="ws-tooltip-wrap">
+          <div class="ws-badge">🎯 100% WHITE SPACE THANA</div>
+          <div class="ws-title">${thanaName} Thana (Entire Upazila)</div>
+          <div class="ws-stat">• District: <b>${distName}</b></div>
+          <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (Zero Retail Presence)</b></div>
+          <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
+          <div class="ws-opp">⚡ Strategic Opportunity: এই পুরো উপজেলায় বীর গ্রুপের কোনো দোকান নেই। এখানে নতুন ডিস্ট্রিবিউটর বা এসআর রুট চালুর পূর্ণ সুযোগ রয়েছে।</div>
+        </div>
+      `, {sticky: false, direction: 'top', offset: [0, -12]});
+
+      const pulseCircle = L.circle(center, {
+        radius: 3500,
+        color: '#ff2a85',
+        fillColor: '#ff2a85',
+        fillOpacity: 0.18,
+        weight: 2.2,
+        dashArray: '5, 5'
+      });
+
+      wsLayer.addLayer(pulseCircle);
+      wsLayer.addLayer(wsMk);
+    }
+    return;
+  }
+
+  // Case B: Thana has outlets, find local unserved village / road sectors
   if (thanaBounds && thanaBounds.isValid()) {
     const minLat = thanaBounds.getSouth(), maxLat = thanaBounds.getNorth();
     const minLng = thanaBounds.getWest(), maxLng = thanaBounds.getEast();
     const dLat = maxLat - minLat;
     const dLng = maxLng - minLng;
 
-    // Check grid sectors for coverage void
     const samplePoints = [
       { name: `${thanaName} North Sector`, lat: minLat + dLat*0.82, lng: minLng + dLng*0.35 },
       { name: `${thanaName} South-East Sector`, lat: minLat + dLat*0.22, lng: minLng + dLng*0.78 },
@@ -3623,7 +3654,6 @@ function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
     ];
 
     samplePoints.forEach(sp => {
-      // Find distance to closest outlet
       let minDistKm = 999;
       tOutlets.forEach(o => {
         const dLatDeg = o[0] - sp.lat;
@@ -3632,10 +3662,10 @@ function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
         if (distKm < minDistKm) minDistKm = distKm;
       });
 
-      // If no outlet within 1.2 km -> Spatial Void!
-      if (minDistKm > 1.2) {
+      // Only show if there's an actual distance > 1.8km and < 50km
+      if (minDistKm > 1.8 && minDistKm < 50) {
         const voidCircle = L.circle([sp.lat, sp.lng], {
-          radius: 800,
+          radius: 900,
           color: '#ff2a85',
           fillColor: '#ff2a85',
           fillOpacity: 0.16,
