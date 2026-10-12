@@ -3611,49 +3611,54 @@ function renderThanaWhiteSpaceHubs(thanaName, distName, divIdx, outlets) {
 
   // Case A: Entire Thana has 0 Outlets (100% Complete White Space)
   if (tOutlets.length === 0) {
-    if (thanaBounds && thanaBounds.isValid()) {
-      const center = thanaBounds.getCenter();
-      const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
-      wsMk.bindTooltip(`
-        <div class="ws-tooltip-wrap">
-          <div class="ws-badge">🎯 100% WHITE SPACE THANA</div>
-          <div class="ws-title">${thanaName} Thana (Entire Upazila)</div>
-          <div class="ws-stat">• District: <b>${distName}</b></div>
-          <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (Zero Retail Presence)</b></div>
-          <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
-          <div class="ws-opp">⚡ Strategic Opportunity: এই পুরো উপজেলায় বীর গ্রুপের কোনো দোকান নেই। এখানে নতুন ডিস্ট্রিবিউটর বা এসআর রুট চালুর পূর্ণ সুযোগ রয়েছে।</div>
-        </div>
-      `, {sticky: false, direction: 'top', offset: [0, -12]});
+    if (feat) {
+      const center = getFeatureInteriorPoint(feat) || (thanaBounds ? thanaBounds.getCenter() : null);
+      if (center) {
+        const wsMk = L.marker(center, {icon: createWSIcon(), interactive: true, pane: 'markerPane'});
+        wsMk.bindTooltip(`
+          <div class="ws-tooltip-wrap">
+            <div class="ws-badge">🎯 100% WHITE SPACE THANA</div>
+            <div class="ws-title">${thanaName} Thana (Entire Upazila)</div>
+            <div class="ws-stat">• District: <b>${distName}</b></div>
+            <div class="ws-stat">• Bir Group Outlets: <b style="color:#ef4444;">0 Outlets (Zero Retail Presence)</b></div>
+            <div class="ws-stat">• Field Visits: <b style="color:#ef4444;">0 Visits</b></div>
+            <div class="ws-opp">⚡ Strategic Opportunity: এই পুরো উপজেলায় বীর গ্রুপের কোনো দোকান নেই। এখানে নতুন ডিস্ট্রিবিউটর বা এসআর রুট চালুর পূর্ণ সুযোগ রয়েছে।</div>
+          </div>
+        `, {sticky: false, direction: 'top', offset: [0, -12]});
 
-      const pulseCircle = L.circle(center, {
-        radius: 3500,
-        color: '#ff2a85',
-        fillColor: '#ff2a85',
-        fillOpacity: 0.18,
-        weight: 2.2,
-        dashArray: '5, 5'
-      });
+        const pulseCircle = L.circle(center, {
+          radius: 3500,
+          color: '#ff2a85',
+          fillColor: '#ff2a85',
+          fillOpacity: 0.18,
+          weight: 2.2,
+          dashArray: '5, 5'
+        });
 
-      wsLayer.addLayer(pulseCircle);
-      wsLayer.addLayer(wsMk);
+        wsLayer.addLayer(pulseCircle);
+        wsLayer.addLayer(wsMk);
+      }
     }
     return;
   }
 
   // Case B: Thana has outlets, find local unserved village / road sectors
-  if (thanaBounds && thanaBounds.isValid()) {
+  if (thanaBounds && thanaBounds.isValid() && feat) {
     const minLat = thanaBounds.getSouth(), maxLat = thanaBounds.getNorth();
     const minLng = thanaBounds.getWest(), maxLng = thanaBounds.getEast();
     const dLat = maxLat - minLat;
     const dLng = maxLng - minLng;
 
     const samplePoints = [
-      { name: `${thanaName} North Sector`, lat: minLat + dLat*0.82, lng: minLng + dLng*0.35 },
-      { name: `${thanaName} South-East Sector`, lat: minLat + dLat*0.22, lng: minLng + dLng*0.78 },
-      { name: `${thanaName} West Flank`, lat: minLat + dLat*0.55, lng: minLng + dLng*0.18 }
+      { name: `${thanaName} North Sector`, lat: minLat + dLat*0.75, lng: minLng + dLng*0.45 },
+      { name: `${thanaName} East Sector`, lat: minLat + dLat*0.45, lng: minLng + dLng*0.75 },
+      { name: `${thanaName} Central-West Sector`, lat: minLat + dLat*0.50, lng: minLng + dLng*0.25 }
     ];
 
     samplePoints.forEach(sp => {
+      // STRICT GEOMETRIC VALIDATION: Point MUST be strictly inside the thana boundary!
+      if (!isPointInGeoFeature(sp.lat, sp.lng, feat)) return;
+
       let minDistKm = 999;
       tOutlets.forEach(o => {
         const dLatDeg = o[0] - sp.lat;
